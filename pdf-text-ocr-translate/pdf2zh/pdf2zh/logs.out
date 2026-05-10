@@ -1,0 +1,10 @@
+nohup: ignoring input
+argos-translate is not installed, if you want to use argostranslate, please install it. If you don't use argostranslate translator, you can safely ignore this warning.
+not in git repo
+ * Serving Flask app 'flaskback'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.16.100.52:5000
+[33mPress CTRL+C to quit[0m

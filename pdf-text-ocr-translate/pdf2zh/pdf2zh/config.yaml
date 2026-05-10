@@ -1,0 +1,85 @@
+###########################
+minio_address: "10.1.0.89:9000"
+minio_user: "minioadmin"
+minio_password: "minioadmin"
+default_bucket: "documenttranslate"
+
+##########################
+"YI_BASE_URL": "http://10.1.0.89:8190/v1" # 大模型翻译接口
+"YI_API_KEY": ""
+"YI_MODEL_NAME": "Qwen3-30B-A3B-Instruct"
+
+# YI_BASE_URL: "http://10.1.0.89:9092/fanyi/document/internal/translate"
+# YI_API_KEY: ""
+
+progress_update: "http://10.1.0.89:9092/fanyi/document/internal/progress" # 进度更新
+get_upload_url: "http://10.1.0.89:9092/fanyi/document/internal/getPresignedUploadUrl" # 获取minio上传URL及objectKey
+finish_api: "http://10.1.0.89:9092/fanyi/document/internal/finish" # 文档翻译结束回调
+
+################# DocuTranslate API config #################
+# base_url: "http://10.1.0.87:8010/service"
+# 基础配置
+docu_translate:
+  # 基础域名和端口（根据实际主要使用的服务端统一配置）
+  chunk_size: 2000
+  convert_engine: "mineru_deploy"
+  mineru_server: 
+    mineru_deploy_base_url: "http://10.1.0.87:4511"
+    mineru_deploy_backend: "pipeline"
+    mineru_deploy_formula_enable: True
+    mineru_deploy_start_page_id: 0
+    mineru_deploy_end_page_id: 99999
+    
+  base:
+    host: "10.1.0.87"
+    port: 8010
+  
+  # API 路径配置（仅保留路径部分，避免 URL 硬编码重复）
+  api:
+    # 基础服务路径
+    base_path: "/service"
+    
+    # 翻译任务相关接口
+    start_translate_task:
+      path: "/translate/file"
+      method: "POST"
+      desc: "通过 multipart/form-data 方式上传文件并启动翻译任务"
+    
+    cancel_task:
+      path: "/cancel/{task_id}"
+      method: "POST"
+      desc: "取消翻译任务, http://ip:port/service/cancel/{task_id}"
+    
+    release_resource:
+      path: "/release/{task_id}"
+      method: "POST"
+      desc: "释放任务资源, http://ip:port/service/release/{task_id}"
+    
+    get_task_status:
+      path: "/status/{task_id}"
+      method: "GET"
+      desc: "获取任务状态, http://ip:port/service/status/{task_id}"
+    
+    download_file:
+      path: "/download/{task_id}/{file_type}"
+      method: "GET"
+      desc: "下载翻译结果文件, /service/download/{task_id}/{file_type}"
+ 
+
+# support_file_type: ["png", "jpg", "jpeg", "pdf", "doc", "ppt", "xls", "docx", "pptx", "xlsx", "txt", "epub", "md", "ass", "html", "htm", "srt", "json"]
+support_file_type: ["pdf", "doc", "ppt", "xls", "docx", "pptx", "xlsx", "txt", "epub", "md", "ass", "html", "htm", "srt", "json"]
+
+pdf_translate:  
+  api: 'http://10.1.0.87:4559/translate'
+  method: "POST"
+  desc: "数字版pdf翻译服务！"
+
+# curl --location 'http://10.1.0.87:4524/translate' \
+# --header 'Content-Type: application/json' \
+# --data '{
+#     "jobId": "12333",
+#     "file_url": "http://10.1.0.87:9000/documenttranslate/2205.05832v3-mono.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20260106%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260106T082740Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d939b1820ac79831425f6bc1d481933a13be70f398574016f819d39c8538af0d",
+#     "lang_in": "en",
+#     "lang_out": "zh",
+#     "termbase_id": "232324"
+# }'
