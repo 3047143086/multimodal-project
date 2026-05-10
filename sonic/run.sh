@@ -1,0 +1,4 @@
+PROCESS_NUM=$1
+WORKER_CLA=$2
+TIME_OUT=$3
+gunicorn -w $PROCESS_NUM -k $WORKER_CLA --timeout $TIME_OUT -b 0.0.0.0:8080 app:app

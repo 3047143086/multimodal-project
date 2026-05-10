@@ -1,0 +1,29 @@
+FROM sonic:v2.0
+
+ENV TZ=Asia/Shanghai
+ENV PYTHONUNBUFFERED=1
+
+# 将当前目录中的所有东西都复制到镜像中/workspace目录下
+COPY ./ /workspace
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y libgl1 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y ffmpeg
+
+# # 修改 PATH，优先使用系统 ffmpeg
+# ENV PATH /usr/bin:$PATH
+# 安装 Python 依赖
+# RUN pip install -r /workspace/requirements_2.txt
+
+RUN chmod -R 777 /workspace/run.sh
+
+# 安装 gunicorn
+RUN pip install gunicorn
+
+# 设置code文件夹是工作目录
+WORKDIR /workspace
+
+ENV process_num=1 worker_class="sync" timeout=15000 backlog=1024
+ENTRYPOINT ["/bin/bash", "-c", "/workspace/run.sh ${process_num} ${worker_class} ${timeout} ${backlog}"]

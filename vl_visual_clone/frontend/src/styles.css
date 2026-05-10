@@ -1,0 +1,70 @@
+:root {
+  font-family: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  color: #13202e;
+  background: linear-gradient(180deg, #f6f8fb 0%, #eef2f7 100%);
+}
+body {
+  margin: 0;
+}
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+h1 {
+  margin-top: 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 10px 12px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+}
+input, select {
+  padding: 8px;
+  border: 1px solid #ccd4df;
+  border-radius: 8px;
+}
+button {
+  margin-top: 16px;
+  background: #0d6efd;
+  border: none;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.result {
+  margin-top: 20px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px;
+}
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.error {
+  color: #b00020;
+  background: #ffeef0;
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 16px;
+}
+iframe {
+  width: 100%;
+  height: 720px;
+  border: 1px solid #ccd4df;
+  border-radius: 8px;
+}
+@media (max-width: 800px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
