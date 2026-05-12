@@ -1,4 +1,5 @@
 """Functions that can be used for the most common use-cases for pdf2zh.six"""
+
 import cv2
 import asyncio
 import io
@@ -33,12 +34,17 @@ from babeldoc.assets.assets import get_font_and_metadata
 from utils import request_api
 
 import yaml
-with open('/app/pdf2zh/config.yaml', 'r', encoding='utf-8') as f:
+
+with open("/app/pdf2zh/config.yaml", "r", encoding="utf-8") as f:
     config = yaml.load(f.read(), Loader=yaml.FullLoader)
 
 NOTO_NAME = "noto"
 
 logger = logging.getLogger(__name__)
+_fh = logging.FileHandler("/app/pdf2zh/translate_debug.log", encoding="utf-8")
+_fh.setLevel(logging.INFO)
+logger.addHandler(_fh)
+logging.getLogger("pdf2zh.converter").addHandler(_fh)
 
 noto_list = [
     "am",  # Amharic
@@ -261,14 +267,18 @@ def translate_patch(
     with tqdm.tqdm(total=total_pages) as progress:
         for pageno, page in enumerate(PDFPage.create_pages(doc)):
 
-            process_value = round((pageno/total_pages)*100, 2)            
-            request_data = {"jobId":task_id, "progress": process_value, "progressTime": int(datetime.now().timestamp() * 1000)}
+            process_value = round((pageno / total_pages) * 100, 2)
+            request_data = {
+                "jobId": task_id,
+                "progress": process_value,
+                "progressTime": int(datetime.now().timestamp() * 1000),
+            }
             progress_update_res = request_api(config["progress_update"], request_data)
             print(request_data)
             # print(type(progress_update_res))
             print(progress_update_res)
-            if progress_update_res["code"]  == 200:
-                if not progress_update_res["data"]: # false打断
+            if progress_update_res["code"] == 200:
+                if not progress_update_res["data"]:  # false打断
                     raise CancelledError("task cancelled")
 
             if cancellation_event and cancellation_event.is_set():
@@ -284,8 +294,14 @@ def translate_patch(
                 pix.height, pix.width, 3
             )[:, :, ::-1]
             page_layout = model.predict(image, imgsz=int(pix.height / 32) * 32)[0]
-            
-            logger.info(f"#############{page_layout}")
+
+            for d in page_layout.boxes:
+                x0, y0, x1, y1 = d.xyxy.tolist()
+                rect = (x0, y0, x1, y1)
+                text = doc_zh[page.pageno].get_text("text", clip=rect).strip()[:100]
+                logger.info(
+                    f"page {pageno} box cls={page_layout.names[int(d.cls)]} conf={d.conf:.2f} xyxy={d.xyxy.tolist()} pix_h={pix.height} text={text!r}"
+                )
             # kdtree 是不可能 kdtree 的，不如直接渲染成图片，用空间换时间
             box = np.ones((pix.height, pix.width))
             h, w = box.shape
@@ -301,8 +317,11 @@ def translate_patch(
                     )
                     box[y0:y1, x0:x1] = i + 2
             for i, d in enumerate(page_layout.boxes):
-                if page_layout.names[int(d.cls)] in vcls:
+                if page_layout.names[int(d.cls)] in vcls and d.conf >= 0.5:
                     x0, y0, x1, y1 = d.xyxy.squeeze()
+                    # 页眉（顶部20%）或页脚（底部20%）区域不标记为保留，允许翻译
+                    if y1 < pix.height * 0.20 or y0 > pix.height * 0.80:
+                        continue
                     x0, y0, x1, y1 = (
                         np.clip(int(x0 - 1), 0, w - 1),
                         np.clip(int(h - y1 - 1), 0, h - 1),
@@ -311,36 +330,36 @@ def translate_patch(
                     )
                     box[y0:y1, x0:x1] = 0
             layout[page.pageno] = box
-            
+
             # 新建一个 xref 存放新指令流
             page.page_xref = doc_zh.get_new_xref()  # hack 插入页面的新 xref
             doc_zh.update_object(page.page_xref, "<<>>")
             doc_zh.update_stream(page.page_xref, b"")
             doc_zh[page.pageno].set_contents(page.page_xref)
             # 处理之前提取并保存信息
-            #pre_process_info = extract_document_info(doc_zh, page, pageno, page_layout)
-            #pre_process_all_pages_info.append(pre_process_info)
-            
+            # pre_process_info = extract_document_info(doc_zh, page, pageno, page_layout)
+            # pre_process_all_pages_info.append(pre_process_info)
+
             interpreter.process_page(page)
-            
+
             # 处理之后提取信息
-            #post_process_info = extract_document_info(doc_zh, page, pageno, page_layout)
-            #post_process_all_pages_info.append(post_process_info)
-            
+            # post_process_info = extract_document_info(doc_zh, page, pageno, page_layout)
+            # post_process_all_pages_info.append(post_process_info)
+
     # 保存所有页处理前的信息到一个文件
-    #with open(f'pre_process_all_page.json', 'w', encoding='utf-8') as f:
+    # with open(f'pre_process_all_page.json', 'w', encoding='utf-8') as f:
     #    json.dump(pre_process_all_pages_info, f, ensure_ascii=False, indent=4)
-    
+
     # 保存所有页处理后的信息到一个文件
-    #with open('post_process_all_pages.json', 'w', encoding='utf-8') as f:
+    # with open('post_process_all_pages.json', 'w', encoding='utf-8') as f:
     #    json.dump(post_process_all_pages_info, f, ensure_ascii=False, indent=4)
-    
+
     device.close()
     return obj_patch
 
 
 def translate_stream(
-    stream: bytes,    
+    stream: bytes,
     task_id: str = "",
     pages: Optional[list[int]] = None,
     lang_in: str = "",
@@ -371,7 +390,7 @@ def translate_stream(
     doc_en.save(stream)
     doc_zh = Document(stream=stream)
     page_count = doc_zh.page_count
-       
+
     # font_list = [("GoNotoKurrent-Regular.ttf", font_path), ("tiro", None)]
     font_id = {}
     for page in doc_zh:
@@ -401,9 +420,9 @@ def translate_stream(
                             )
             except Exception:
                 pass
-    # print("locals: ", locals()["task_id"]) 
+    # print("locals: ", locals()["task_id"])
     fp = io.BytesIO()
-    doc_zh.save(fp)    
+    doc_zh.save(fp)
     obj_patch: dict = translate_patch(fp, **locals())
 
     for obj_id, ops_new in obj_patch.items():
@@ -412,14 +431,14 @@ def translate_stream(
         # print(ops_old)
         # print(ops_new.encode())
         doc_zh.update_stream(obj_id, ops_new.encode())
-    '''
+    """
     # 提取 doc_zh 的详细信息
     doc_zh_info_after = extract_document_info(doc_zh)
 
     # 保存为 JSON 文件
     with open('doc_zh_info_after.json', 'w', encoding='utf-8') as f:
         json.dump(doc_zh_info_after, f, ensure_ascii=False, indent=4)
-    '''
+    """
     doc_en.insert_file(doc_zh)
     for id in range(page_count):
         doc_en.move_page(page_count + id, id * 2 + 1)
@@ -501,7 +520,7 @@ def translate(
     ignore_cache: bool = False,
     **kwarg: Any,
 ):
-    
+
     if not files:
         raise PDFValueError("No files to process.")
 
@@ -562,7 +581,7 @@ def translate(
                 logger.debug(f"Cleaned temp file: {file_path}")
         except Exception as e:
             logger.warning(f"Failed to clean temp file {file_path}", exc_info=True)
-        
+
         # print("locals 中的所有内容：", locals())
         s_mono, s_dual = translate_stream(
             s_raw,

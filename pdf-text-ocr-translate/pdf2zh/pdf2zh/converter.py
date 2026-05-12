@@ -123,8 +123,14 @@ class Paragraph:
         self.x1: float = x1  # 右边界
         self.y0: float = y0  # 上边界
         self.y1: float = y1  # 下边界
-        self.size: float = size  # 字体大小
+        self.size: float = size  # 字体大小（段落内最大值）
+        self.size_freq: dict = {size: 1}  # 各字号出现次数，用于计算众数
         self.brk: bool = brk  # 换行标记
+
+    @property
+    def dominant_size(self) -> float:
+        """返回段落内出现次数最多的字号（众数）。"""
+        return max(self.size_freq, key=self.size_freq.get)
 
 
 # fmt: off
@@ -152,6 +158,7 @@ class TranslateConverter(PDFConverterEx):
         self.layout = layout
         self.noto_name = noto_name
         self.noto = noto
+        self.header_size_cache: dict = {}  # 跨页缓存页眉/页脚字号，key="top"或"bottom"，首次出现后锁定
         self.translator: BaseTranslator = None
         # e.g. "ollama:gemma2:9b" -> ["ollama", "gemma2:9b"]
         param = service.split(":", 1)
@@ -203,9 +210,10 @@ class TranslateConverter(PDFConverterEx):
                     return True
             else:
                 if re.match(                                            # latex 字体
-                    r"(CM[^R]|MS.M|XY|MT|BL|RM|EU|LA|RS|LINE|LCIRCLE|TeX-|rsfs|txsy|wasy|stmary|.*Mono|.*Code|.*Ital|.*Sym|.*Math)",
+                    r"(CM[^R]|MS.M|XY|MT|BL|RM|EU|LA|RS|LINE|LCIRCLE|TeX-|rsfs|txsy|wasy|stmary|.*Mono|.*Code|(?!TimesNewRoman).*Ital|.*Sym|.*Math)",
                     font,
                 ):
+                    log.info(f"vflag font match: font={font!r} char={char!r}")
                     return True
             # 基于字符集规则的判定
             if self.vchar:
@@ -235,6 +243,9 @@ class TranslateConverter(PDFConverterEx):
                 # 读取当前字符在 layout 中的类别
                 cx, cy = np.clip(int(child.x0), 0, w - 1), np.clip(int(child.y0), 0, h - 1)
                 cls = layout[cy, cx]
+                # 记录页眉区域（y0 > h*0.80，即 PDF 坐标系中靠近顶部）字符的 size
+                if child.y0 > h * 0.80:
+                    log.info(f"header char: char={child.get_text()!r} size={child.size:.2f} y0={child.y0:.1f} x0={child.x0:.1f} font={child.fontname} cls={cls}")
                 # 锚定文档中 bullet 的位置
                 if child.get_text() == "•":
                     cls = 0
@@ -286,7 +297,8 @@ class TranslateConverter(PDFConverterEx):
                             sstk[-1] += " "
                         elif child.x1 < xt.x0:      # 添加换行空格并标记原文段落存在换行
                             sstk[-1] += " "
-                            pstk[-1].brk = True
+                            if child.y0 < h * 0.80:  # 页眉页脚区域（y0 > h*0.80）不标记换行，避免页码跨行
+                                pstk[-1].brk = True
                     else:                           # 根据当前字符构建一个新的段落
                         sstk.append("")
                         pstk.append(Paragraph(child.y0, child.x0, child.x0, child.x0, child.y0, child.y1, child.size, False))
@@ -297,6 +309,8 @@ class TranslateConverter(PDFConverterEx):
                     ) and child.get_text() != " ":                          # 3. 当前字符不是空格
                         pstk[-1].y -= child.size - pstk[-1].size            # 修正段落初始纵坐标，假设两个不同大小字符的上边界对齐
                         pstk[-1].size = child.size
+                    if child.get_text() != " ":                             # 统计非空格字符的字号频次
+                        pstk[-1].size_freq[child.size] = pstk[-1].size_freq.get(child.size, 0) + 1
                     sstk[-1] += child.get_text()
                 else:                                                       # 公式入栈
                     if (                                                    # 根据公式左侧的文字修正公式的纵向偏移
@@ -350,7 +364,9 @@ class TranslateConverter(PDFConverterEx):
             if not s.strip() or re.match(r"^\{v\d+\}$", s):  # 空白和公式不翻译
                 return s
             try:
+                log.info(f"translate input: {s!r}")
                 new = self.translator.translate(s)
+                log.info(f"translate output: {new!r}")
                 return new
             except BaseException as e:
                 if log.isEnabledFor(logging.DEBUG):
@@ -396,6 +412,36 @@ class TranslateConverter(PDFConverterEx):
             height: float = pstk[id].y1 - pstk[id].y0   # 段落高度
             size: float = pstk[id].size                 # 段落字体大小
             brk: bool = pstk[id].brk                    # 段落换行标记
+            if not brk:                                 # 原文不换行（如页眉页脚），缩小字体适应宽度
+                # 判断是页眉（顶部20%）还是页脚（底部20%），用于跨页字号缓存的 key
+                ph = ltpage.height
+                if pstk[id].y0 > ph * 0.80:
+                    zone_key = "top"
+                elif pstk[id].y1 < ph * 0.20:
+                    zone_key = "bottom"
+                else:
+                    zone_key = None
+                if zone_key and zone_key in self.header_size_cache:
+                    # 已有缓存：直接用首次识别的字号，保证跨页版面一致
+                    size = self.header_size_cache[zone_key]
+                else:
+                    # 首次出现：用众数字号，页眉/页脚不超过 9.5pt
+                    size = min(pstk[id].dominant_size, height)
+                    if zone_key:
+                        size = min(size, 9.5)
+                        self.header_size_cache[zone_key] = size
+                clean_new = re.sub(r"\{\s*v[\d\s]+\}", "", new)
+                est_width = sum(self.noto.char_lengths(c, size)[0] for c in clean_new)
+                avail_width = x1 - pstk[id].x
+                log.info(f"brk=False seg: size={size:.1f} est_width={est_width:.1f} avail_width={avail_width:.1f} text={clean_new[:40]!r} raw_new={new[:60]!r} orig={sstk[id][:60]!r}")
+                if est_width > avail_width and est_width > 0:
+                    if zone_key is None:
+                        # 正文段落：译文比原文长时改为自动换行，避免字体被压缩到不可读
+                        brk = True
+                        log.info(f"  → promoted to brk=True (body text overflow)")
+                    else:
+                        size = size * avail_width / est_width
+                        log.info(f"  → scaled size={size:.1f}")
             cstk: str = ""                              # 当前文字栈
             fcur: str = None                            # 当前字体 ID
             lidx = 0                                    # 记录换行次数
