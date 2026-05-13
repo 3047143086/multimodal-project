@@ -105,10 +105,10 @@ class BaseTranslator:
         :return: translated text
         """
         #print(f"DEBUG: 尝试翻译内容: {text[:20]}... 忽略缓存状态: {self.ignore_cache}")
-        if not (self.ignore_cache or ignore_cache):
-            cache = self.cache.get(text)
-            if cache is not None:
-                return cache
+        # if not (self.ignore_cache or ignore_cache):
+        #     cache = self.cache.get(text)
+        #     if cache is not None:
+        #         return cache
 
         translation = self.do_translate(text)
         self.cache.set(text, translation)

@@ -210,7 +210,7 @@ class TranslateConverter(PDFConverterEx):
                     return True
             else:
                 if re.match(                                            # latex 字体
-                    r"(CM[^R]|MS.M|XY|MT|BL|RM|EU|LA|RS|LINE|LCIRCLE|TeX-|rsfs|txsy|wasy|stmary|.*Mono|.*Code|(?!TimesNewRoman).*Ital|.*Sym|.*Math)",
+                    r"(CM[^R]|MS[A-Z]M|XY|MT|BL|RM|EU|LA|RS|LINE|LCIRCLE|TeX-|rsfs|txsy|wasy|stmary|.*Mono|.*Code|(?!TimesNewRoman).*Ital|.*Sym|.*Math)",
                     font,
                 ):
                     log.info(f"vflag font match: font={font!r} char={char!r}")
